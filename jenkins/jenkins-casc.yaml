@@ -1,0 +1,87 @@
+jenkins:
+  systemMessage: "DevOps lab - provisioned via JCasC"
+  numExecutors: 2
+  mode: NORMAL
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "admin"
+          name: "Admin"
+          password: "Admin123!"
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+  slaveAgentPort: 50000
+  labelString: "master"
+  globalNodeProperties:
+    - envVars:
+        env:
+          - key: "SONAR_HOST_URL"
+            value: "${SONAR_HOST_URL}"
+          - key: "NEXUS_HOST_URL"
+            value: "${NEXUS_HOST_URL}"
+          - key: "ANSIBLE_MASTER_IP"
+            value: "${ANSIBLE_MASTER_IP}"
+          - key: "ANSIBLE_SLAVE_IP"
+            value: "${ANSIBLE_SLAVE_IP}"
+          - key: "APP_SERVER_IP"
+            value: "${APP_SERVER_IP}"
+          - key: "REPO_URL"
+            value: "${REPO_URL}"
+          - key: "NEXUS_REPO_NAME"
+            value: "${NEXUS_REPO_NAME}"
+
+unclassified:
+  location:
+    url: "http://localhost:8080/"
+  ansiColorBuildWrapper:
+    colorMaps:
+      - name: "xterm"
+  sonarGlobalConfiguration:
+    buildWrapperEnabled: true
+    installations:
+      - name: "SonarQube"
+        serverUrl: "${SONAR_HOST_URL}"
+        credentialsId: "sonarqube-admin"
+  gitSCM:
+    globalConfigName: "jenkins"
+    globalConfigEmail: "jenkins@example.com"
+
+tool:
+  maven:
+    installations:
+      - name: "Maven3"
+        properties:
+          - installSource:
+              installers:
+                - maven:
+                    id: "3.9.6"
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - usernamePassword:
+              scope: GLOBAL
+              id: "sonarqube-admin"
+              username: "admin"
+              password: "Admin123!"
+              description: "SonarQube admin credentials"
+          - usernamePassword:
+              scope: GLOBAL
+              id: "nexus-admin"
+              username: "admin"
+              password: "Admin123!"
+              description: "Nexus admin credentials"
+          - basicSSHUserPrivateKey:
+              scope: GLOBAL
+              id: "ansible-master-key"
+              username: "ubuntu"
+              description: "SSH key for Ansible master and targets"
+              privateKeySource:
+                fileOnMaster:
+                  privateKeyFile: "/var/lib/jenkins/.ssh/ansible"
+
+jobs:
+  - file: /opt/devops-lab/jenkins/job-dsl.groovy

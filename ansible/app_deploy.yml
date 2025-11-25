@@ -1,0 +1,12 @@
+- hosts: app_server
+  become: yes
+  vars:
+    nexus_url: "{{ nexus_url | default('http://nexus:8081') }}"
+    nexus_repo: "{{ nexus_repo | default('maven-releases') }}"
+    app_name: "{{ app_name | default('demo-app') }}"
+    app_version: "{{ app_version | default('0.0.1-SNAPSHOT') }}"
+    app_group_id: "{{ app_group_id | default('com.example.demo') }}"
+    nexus_username: "{{ nexus_username | default(lookup('env', 'NEXUS_USERNAME'), true) | default('admin', true) }}"
+    nexus_password: "{{ nexus_password | default(lookup('env', 'NEXUS_PASSWORD'), true) | default('Admin123!', true) }}"
+  roles:
+    - role: app_deploy

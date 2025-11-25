@@ -1,0 +1,51 @@
+- name: Install Java 17
+  apt:
+    name: openjdk-17-jre-headless
+    state: present
+    update_cache: yes
+
+- name: Create application directory
+  file:
+    path: /opt/app
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Download application artifact from Nexus
+  get_url:
+    url: "{{ nexus_url }}/repository/{{ nexus_repo }}/{{ app_group_id | replace('.', '/') }}/{{ app_name }}/{{ app_version }}/{{ app_name }}-{{ app_version }}.jar"
+    dest: /opt/app/app.jar
+    mode: "0755"
+    force: yes
+    url_username: "{{ nexus_username }}"
+    url_password: "{{ nexus_password }}"
+
+- name: Deploy systemd unit
+  template:
+    src: app.service.j2
+    dest: /etc/systemd/system/app.service
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Reload systemd
+  systemd:
+    daemon_reload: yes
+
+- name: Enable and start app service
+  systemd:
+    name: app.service
+    state: restarted
+    enabled: yes
+
+- name: Wait for health endpoint
+  uri:
+    url: "http://{{ inventory_hostname }}:8080/health"
+    method: GET
+    status_code: 200
+    validate_certs: no
+  register: health
+  retries: 15
+  delay: 4
+  until: health.status == 200

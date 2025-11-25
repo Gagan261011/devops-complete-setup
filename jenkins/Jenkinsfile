@@ -1,0 +1,80 @@
+pipeline {
+  agent any
+
+  environment {
+    MAVEN_OPTS = "-Dmaven.test.failure.ignore=false"
+    APP_NAME = "demo-app"
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Build') {
+      steps {
+        dir('app') {
+          sh 'mvn -B clean package'
+        }
+      }
+    }
+
+    stage('SonarQube Analysis') {
+      steps {
+        withSonarQubeEnv('SonarQube') {
+          withCredentials([usernamePassword(credentialsId: 'sonarqube-admin', passwordVariable: 'SONAR_PASS', usernameVariable: 'SONAR_USER')]) {
+            dir('app') {
+              sh 'mvn sonar:sonar -Dsonar.login=$SONAR_USER -Dsonar.password=$SONAR_PASS'
+            }
+          }
+        }
+      }
+    }
+
+    stage('Publish to Nexus') {
+      steps {
+        script {
+          env.APP_VERSION = sh(script: "cd app && mvn -q -DforceStdout help:evaluate -Dexpression=project.version", returnStdout: true).trim()
+          env.GROUP_ID = sh(script: "cd app && mvn -q -DforceStdout help:evaluate -Dexpression=project.groupId", returnStdout: true).trim()
+        }
+        withCredentials([usernamePassword(credentialsId: 'nexus-admin', passwordVariable: 'NEXUS_PASSWORD', usernameVariable: 'NEXUS_USERNAME')]) {
+          sh '''
+            set -e
+            JAR_PATH=$(ls app/target/*.jar | grep -v original | head -n1)
+            GROUP_PATH=${GROUP_ID//./\/}
+            curl -v -u ${NEXUS_USERNAME}:${NEXUS_PASSWORD} --upload-file "$JAR_PATH" \
+              "${NEXUS_HOST_URL}/repository/${NEXUS_REPO_NAME}/${GROUP_PATH}/${APP_NAME}/${APP_VERSION}/${APP_NAME}-${APP_VERSION}.jar"
+          '''
+        }
+      }
+    }
+
+    stage('Deploy via Ansible') {
+      steps {
+        withCredentials([
+          sshUserPrivateKey(credentialsId: 'ansible-master-key', keyFileVariable: 'SSH_KEY'),
+          usernamePassword(credentialsId: 'nexus-admin', passwordVariable: 'NEXUS_PASSWORD', usernameVariable: 'NEXUS_USERNAME')
+        ]) {
+          sh '''
+            set -e
+            chmod 600 ${SSH_KEY}
+            ssh -o StrictHostKeyChecking=no -i ${SSH_KEY} ubuntu@${ANSIBLE_MASTER_IP} "\
+              cd /opt/devops-lab && \
+              git pull --rebase || true && \
+              NEXUS_USERNAME=${NEXUS_USERNAME} NEXUS_PASSWORD=${NEXUS_PASSWORD} \
+              ansible-playbook -i ansible/inventory.ini ansible/app_deploy.yml \
+              --extra-vars 'nexus_url=${NEXUS_HOST_URL} nexus_repo=${NEXUS_REPO_NAME} app_name=${APP_NAME} app_version=${APP_VERSION}'"
+          '''
+        }
+      }
+    }
+
+    stage('Smoke Test') {
+      steps {
+        sh 'curl -f http://${APP_SERVER_IP}:8080/health'
+      }
+    }
+  }
+}
